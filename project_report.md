@@ -84,29 +84,20 @@ FinBERT is a BERT-base model (110M parameters) pre-trained on the Reuters TRC2 f
 
 | Model | Accuracy | Macro F1 | Bearish F1 | Bullish F1 | Neutral F1 |
 |-------|:--------:|:--------:|:----------:|:----------:|:----------:|
-| Simple RNN | 0.4380 | 0.3340 | 0.2200 | 0.1830 | 0.5980 |
-| LSTM | 0.8020 | 0.7360 | 0.6420 | 0.6900 | 0.8750 |
-| GRU | 0.7960 | 0.7340 | 0.6260 | 0.7140 | 0.8620 |
-| **FinBERT** | **0.8790** | **0.8409** | **0.7816** | **0.8218** | **0.9191** |
-
-**Table 2 — Per-Class Precision and Recall (Validation Set)**
-
-| Model | Bearish P | Bearish R | Bullish P | Bullish R | Neutral P | Neutral R |
-|-------|:---------:|:---------:|:---------:|:---------:|:---------:|:---------:|
-| Simple RNN | 0.312 | 0.171 | 0.218 | 0.157 | 0.462 | 0.848 |
-| LSTM | 0.681 | 0.607 | 0.718 | 0.664 | 0.855 | 0.896 |
-| GRU | 0.654 | 0.600 | 0.712 | 0.717 | 0.855 | 0.870 |
-| **FinBERT** | **0.792** | **0.771** | **0.842** | **0.802** | **0.902** | **0.936** |
+| Simple RNN | 0.4196 | 0.3466 | 0.2138 | 0.2581 | 0.5679 |
+| LSTM | 0.7877 | 0.7158 | 0.6914 | 0.6605 | 0.8674 |
+| GRU | 0.7802 | 0.7152 | 0.6073 | 0.6829 | 0.8555 |
+| **FinBERT** | **0.8798** | **0.8418** | **0.7829** | **0.8240** | **0.9185** |
 
 ### 4.2 Analysis by Model
 
-**Simple RNN (Macro F1 = 0.334):** The model collapses almost entirely onto the Neutral majority class. Bearish recall of 0.171 means only 1 in 6 actual bearish tweets is identified correctly. This is a direct consequence of vanishing gradients: the embedding and first-layer weights receive negligible gradient signal from tokens beyond position ~4 in the sequence, making it impossible to learn sentiment from full tweet context.
+**Simple RNN (Macro F1 = 0.346):** The model collapses almost entirely onto the Neutral majority class. Bearish recall of 0.171 means only 1 in 6 actual bearish tweets is identified correctly. This is a direct consequence of vanishing gradients: the embedding and first-layer weights receive negligible gradient signal from tokens beyond position ~4 in the sequence, making it impossible to learn sentiment from full tweet context.
 
-**LSTM (Macro F1 = 0.736 — best RNN):** The gated architecture resolves vanishing gradients entirely. The model learns that "not" followed by a positive word is bearish, that "miss" in a financial context means earnings miss, and that "$TSLA up" differs from "$TSLA" alone. The class-weighted loss raises Bearish recall from 0.171 (SimpleRNN) to 0.607 — nearly a 4× improvement. Early stopping triggers around epoch 12, with the validation F1 curve plateauing, indicating the model has extracted most of the available signal from a 9,938-sample dataset.
+**LSTM (Macro F1 = 0.715):** The gated architecture resolves vanishing gradients entirely. The model learns that "not" followed by a positive word is bearish, that "miss" in a financial context means earnings miss, and that "$TSLA up" differs from "$TSLA" alone. The class-weighted loss raises Bearish recall from 0.171 (SimpleRNN) to 0.607 — nearly a 4× improvement. Early stopping triggers around epoch 12, with the validation F1 curve plateauing, indicating the model has extracted most of the available signal from a 9,938-sample dataset.
 
-**GRU (Macro F1 = 0.734):** GRU performs within 0.002 Macro F1 of LSTM. Tweets of ≤32 tokens after cleaning do not require LSTM's full three-gate memory architecture. The shorter sequences mean information never travels far enough for the extra cell state of LSTM to provide measurable benefit. GRU is preferable in resource-constrained deployments.
+**GRU (Macro F1 = 0.715):** GRU performs within 0.002 Macro F1 of LSTM. Tweets of ≤32 tokens after cleaning do not require LSTM's full three-gate memory architecture. The shorter sequences mean information never travels far enough for the extra cell state of LSTM to provide measurable benefit. GRU is preferable in resource-constrained deployments.
 
-**FinBERT (Macro F1 = 0.841 — best overall):** The improvement over LSTM is +0.105 Macro F1, with gains distributed as: Bearish +0.140, Bullish +0.132, Neutral +0.044. The disproportionate gain on minority classes shows that FinBERT's domain pre-training specifically helps with the nuanced financial language that characterises bearish and bullish tweets. Common LSTM errors — misclassifying "analyst downgrade" as Neutral, or "beats estimates by 12%" as Neutral — are resolved by FinBERT because these expressions appear in its pre-training corpus with strong sentiment associations. Additionally, FinBERT's bidirectional attention sees the full tweet simultaneously rather than left-to-right sequentially, allowing it to resolve negations and context that Sequential models miss.
+**FinBERT (Macro F1 = 0.8418 — best overall):** The improvement over LSTM is +0.105 Macro F1, with gains distributed as: Bearish +0.140, Bullish +0.132, Neutral +0.044. The disproportionate gain on minority classes shows that FinBERT's domain pre-training specifically helps with the nuanced financial language that characterises bearish and bullish tweets. Common LSTM errors — misclassifying "analyst downgrade" as Neutral, or "beats estimates by 12%" as Neutral — are resolved by FinBERT because these expressions appear in its pre-training corpus with strong sentiment associations. Additionally, FinBERT's bidirectional attention sees the full tweet simultaneously rather than left-to-right sequentially, allowing it to resolve negations and context that Sequential models miss.
 
 ### 4.3 Error Analysis (LSTM)
 
@@ -124,11 +115,13 @@ FinBERT resolves ~60% of the Bearish→Neutral confusions by recognising financi
 
 ## 5. Which RNN Variant Works Best and Why
 
-**LSTM is the best RNN variant** (Macro F1 = 0.736 vs GRU's 0.734).
+**LSTM achieved the highest performance among the RNN variants** (Macro F1 = **0.7158** vs **0.7152** for GRU).
 
-The margin is small — within 0.002 Macro F1 — but LSTM edges ahead on Bearish F1 (0.642 vs 0.626), the hardest and most important minority class. The marginal advantage comes from LSTM's cell state being able to maintain a richer representation of negation context across the ~18-token average tweet. For sequences this short, GRU is a practical tie, but LSTM's theoretical advantage on long-range memory translates into a slight but consistent Bearish class improvement.
+The performance difference is extremely small (**0.0006 Macro F1**), indicating that both models perform almost identically on this sentiment classification task. Given the relatively short length of the input tweets, both architectures are able to capture the necessary contextual information effectively. While LSTM's memory cell is theoretically better suited for modeling longer-range dependencies, the results suggest that this advantage provides only a marginal improvement on the current dataset.
 
-**Decision rule for practitioners:** Use GRU in production for 15% faster inference with negligible accuracy loss. Use LSTM when Bearish precision and recall are the priority metric (e.g. risk monitoring applications).
+From a practical perspective, **GRU can be considered a competitive alternative** due to its simpler architecture and lower computational complexity, while maintaining nearly identical predictive performance. The LSTM model remains the top-performing variant in this experiment, but the observed gain is too small to be considered practically significant.
+
+**Decision rule for practitioners:** Use **GRU** when computational efficiency, faster training, or lower inference latency are important. Use **LSTM** when the objective is to maximize predictive performance, although the improvement observed in this study is minimal.
 
 ---
 
@@ -136,13 +129,13 @@ The margin is small — within 0.002 Macro F1 — but LSTM edges ahead on Bearis
 
 | Metric | LSTM (best RNN) | FinBERT | Improvement |
 |--------|:--------------:|:-------:|:-----------:|
-| Accuracy | 0.8020 | 0.8790 | **+0.0770 (+9.6%)** |
-| Macro F1 | 0.7360 | 0.8409 | **+0.1049 (+14.3%)** |
-| Bearish F1 | 0.6420 | 0.7816 | **+0.1396 (+21.7%)** |
-| Bullish F1 | 0.6900 | 0.8218 | **+0.1318 (+19.1%)** |
-| Neutral F1 | 0.8750 | 0.9191 | **+0.0441 (+5.0%)** |
+| Accuracy | 0.7877 | 0.8798 | **+0.0921 (+11.7%)** |
+| Macro F1 | 0.7158 | 0.8418 | **+0.1260 (+17.6%)** |
+| Bearish F1 | 0.6194 | 0.7829 | **+0.1635 (+26.4%)** |
+| Bullish F1 | 0.6605 | 0.8240 | **+0.1635 (+24.8%)** |
+| Neutral F1 | 0.8674 | 0.9185 | **+0.0511 (+5.9%)** |
 
-FinBERT delivers a **14.3% relative improvement in Macro F1** over the best RNN baseline. The improvement is largest for minority classes (Bearish +21.7%, Bullish +19.1%) and smallest for the majority Neutral class (+5.0%), confirming that domain pre-training on financial text primarily helps the model understand sentiment-bearing expressions that are rare or domain-specific — exactly the language that dominates bearish and bullish tweets.
+FinBERT delivers a **17.6% relative improvement in Macro F1** over the best RNN baseline. The improvement is largest for minority classes (Bearish +26.4%, Bullish +24.8%) and smallest for the majority Neutral class (+5.9%), confirming that domain pre-training on financial text primarily helps the model understand sentiment-bearing expressions that are rare or domain-specific — exactly the language that dominates bearish and bullish tweets.
 
 ---
 
@@ -158,8 +151,6 @@ The interactive dashboard (`app.py`) is built with Streamlit and provides five t
 
 **Tab 4 — Batch Analyse:** Accepts a CSV file with a `text` column. Classifies every row with a live progress bar. Displays a results table, summary metrics (total rows, average confidence, most/least common class), distribution bar chart, sentiment mix pie chart, per-class confidence histogram, and a download button for the predictions CSV.
 
-**Tab 5 — About:** Documents the setup pipeline (notebook → export_vocab.py → app.py), model architecture summary table, RNN preprocessing steps, and the full reference list.
-
 ---
 
 ## 8. Conclusion
@@ -170,6 +161,6 @@ This project demonstrates the full model development lifecycle for financial NLP
 
 2. **Class-weighted loss is essential for imbalanced NLP datasets.** Without it, all three RNN models collapse to predicting Neutral (accuracy ≈ 66%, Macro F1 ≈ 0.26). With it, Bearish recall improves 4× in the LSTM.
 
-3. **Domain-specific pre-training compounds the gains from architecture.** FinBERT starts with understanding of financial vocabulary built from millions of financial texts, giving it a head start that 9,938 training examples cannot replicate from scratch. The +14.3% Macro F1 improvement is not primarily about model size — it is about the quality of the starting point.
+3. **Domain-specific pre-training compounds the gains from architecture.** FinBERT starts with understanding of financial vocabulary built from millions of financial texts, giving it a head start that 9,938 training examples cannot replicate from scratch. The +17.6% Macro F1 improvement is not primarily about model size — it is about the quality of the starting point.
 
 ---

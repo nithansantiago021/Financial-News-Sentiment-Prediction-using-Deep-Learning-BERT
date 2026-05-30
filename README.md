@@ -11,15 +11,11 @@ financial-news-sentiment/
 │
 ├── Financial_News_Sentiment_Prediction_Complete.ipynb   ← Main notebook (all sections)
 │
-├── app.py                 ← Streamlit dashboard (5 tabs)
+├── app.py                 ← Streamlit dashboard (4 tabs)
 ├── export_vocab.py        ← Bridge script: notebook → dashboard
 ├── requirements.txt       ← Python dependencies
 ├── README.md              ← Dashboard-specific docs
 ├── models/                ← Created after running notebook
-│   ├── vocab.json         ← Created by export_vocab.py
-│   ├── SimpleRNN_best.pt
-│   ├── LSTM_best.pt
-│   └── GRU_best.pt
 │
 ├── README.md                  
 └── project_report.md      

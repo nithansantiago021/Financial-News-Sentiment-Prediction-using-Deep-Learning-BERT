@@ -23,6 +23,8 @@ env/
 *.sqlite
 *.jpg
 *.png
+*.pt
+*.json
 
 # Database specific (if you export SQL dumps)
 *.sql

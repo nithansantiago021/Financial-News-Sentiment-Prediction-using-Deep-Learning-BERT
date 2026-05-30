@@ -31,6 +31,13 @@ except Exception:
 
 from sklearn.metrics import confusion_matrix   # noqa: F401  (used later)
 
+# ── Transformers (FinBERT) ────────────────────────────────────────────────────
+try:
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    _TRANSFORMERS_OK = True
+except ImportError:
+    _TRANSFORMERS_OK = False
+
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="FinSentiment AI",
@@ -125,7 +132,9 @@ CARD_CLS    = {"Bearish": "pred-bearish", "Bullish": "pred-bullish", "Neutral": 
 
 torch.manual_seed(SEED)
 np.random.seed(SEED)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Always use CPU for inference — FinBERT is loaded with map_location="cpu"
+# so the dashboard runs on any machine without a GPU.
+device = torch.device("cpu")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # MODEL CLASSES
@@ -202,6 +211,14 @@ def clean_tweet_rnn(text: str) -> str:
                     if t not in _STOP_WORDS and len(t) > 2)
 
 
+def light_clean_bert(text: str) -> str:
+    """Minimal cleaning for FinBERT — only strip URLs and normalise whitespace.
+    FinBERT's sub-word tokeniser handles punctuation, casing and $tickers natively.
+    """
+    text = re.sub(r"http\S+|www\S+", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def text_to_sequence(text: str, word2idx: dict) -> list:
     unk = word2idx.get(UNK_TOKEN, 1)
     pad = word2idx.get(PAD_TOKEN, 0)
@@ -213,7 +230,7 @@ def text_to_sequence(text: str, word2idx: dict) -> list:
 # MODEL / VOCAB LOADING
 # ═════════════════════════════════════════════════════════════════════════════
 
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+MODEL_DIR = "/home/nithan-b-s/Documents/Financial-News-Sentiment-Prediction-using-Deep-Learning-BERT/models" # os.path.join(os.path.dirname(__file__), "models")
 
 
 @st.cache_resource(show_spinner=False)
@@ -233,12 +250,46 @@ def load_model(name: str, vocab_size: int):
     cls_map = {"SimpleRNN": SentimentRNN, "LSTM": SentimentLSTM, "GRU": SentimentGRU}
     if name not in cls_map:
         return None, f"Unknown model: {name}"
+    # map_location="cpu" ensures the model loads on any machine, GPU or not
     m = cls_map[name](vocab_size, EMBED_DIM, HIDDEN_DIM, NUM_CLASSES, NUM_LAYERS, DROPOUT, 0)
-    m.load_state_dict(torch.load(path, map_location=device))
+    m.load_state_dict(torch.load(path, map_location="cpu"))
     m.eval()
     return m, None
 
 
+@st.cache_resource(show_spinner=False)
+def load_finbert():
+    """Load the fine-tuned FinBERT model and its tokeniser from the models/ directory.
+
+    Always loads to CPU so the dashboard works without a GPU.
+    Returns (tokeniser, model, None) on success or (None, None, error_str) on failure.
+    """
+    if not _TRANSFORMERS_OK:
+        return None, None, "transformers library not installed (pip install transformers)"
+
+    model_path = os.path.join(MODEL_DIR, "FinBERT_best.pt")
+    base_name  = "ProsusAI/finbert"          # used for the tokeniser and model config
+
+    if not os.path.exists(model_path):
+        return None, None, f"FinBERT weights not found: {model_path}"
+
+    try:
+        tokeniser = AutoTokenizer.from_pretrained(base_name)
+        bert      = AutoModelForSequenceClassification.from_pretrained(
+            base_name,
+            num_labels=3,
+            ignore_mismatched_sizes=True,   # replace the original head with our 3-class head
+        )
+        # Load our fine-tuned weights — CPU safe regardless of how they were saved
+        state = torch.load(model_path, map_location="cpu")
+        bert.load_state_dict(state)
+        bert.eval()
+        return tokeniser, bert, None
+    except Exception as exc:
+        return None, None, str(exc)
+
+with open("/home/nithan-b-s/Documents/Financial-News-Sentiment-Prediction-using-Deep-Learning-BERT/models/model_metrics.json", "r") as f:
+    metrics = json.load(f)
 # ═════════════════════════════════════════════════════════════════════════════
 # INFERENCE
 # ═════════════════════════════════════════════════════════════════════════════
@@ -273,76 +324,54 @@ def demo_predict(text: str) -> dict:
             "cleaned": clean_tweet_rnn(text)}
 
 
+# ── FinBERT-specific inference ────────────────────────────────────────────────
+MAX_BERT_LEN = 64   # max sub-word tokens; matches notebook training setting
+
+def predict_single_bert(text: str, tokeniser, bert_model) -> dict:
+    """Run one raw tweet through the fine-tuned FinBERT model on CPU.
+
+    Uses light_clean_bert (URL removal only) — FinBERT's sub-word tokeniser
+    handles punctuation, casing, and $tickers natively.
+    """
+    cleaned = light_clean_bert(text)
+    enc = tokeniser(
+        cleaned,
+        max_length     = MAX_BERT_LEN,
+        padding        = "max_length",
+        truncation     = True,
+        return_tensors = "pt",
+    )
+    # Both tensors stay on CPU — no .to(device) needed
+    with torch.no_grad():
+        logits = bert_model(
+            input_ids      = enc["input_ids"],
+            attention_mask = enc["attention_mask"],
+        ).logits
+        probs = torch.softmax(logits, dim=1).squeeze().numpy()
+    idx = int(np.argmax(probs))
+    return {
+        "label":     LABEL_MAP[idx],
+        "confidence": float(probs[idx]),
+        "probs":     {LABEL_MAP[i]: float(probs[i]) for i in range(3)},
+        "cleaned":   cleaned,
+    }
+
+
+def predict_paragraph_bert(text: str, tokeniser, bert_model) -> dict:
+    """Sentence-level FinBERT inference with majority-vote aggregation."""
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip())
+             if len(s.split()) > 3]
+    if not sents:
+        sents = [text]
+    results = [predict_single_bert(s, tokeniser, bert_model) for s in sents]
+    votes   = Counter(r["label"] for r in results)
+    return {"overall": votes.most_common(1)[0][0], "votes": dict(votes),
+            "sentences": [{"text": s, **r} for s, r in zip(sents, results)]}
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # STATIC DATA
 # ═════════════════════════════════════════════════════════════════════════════
-
-PRERECORDED = {
-    "Simple RNN": {
-        "Accuracy": 0.4380, "Macro F1": 0.3340,
-        "Bearish F1": 0.2200, "Bullish F1": 0.1830, "Neutral F1": 0.5980,
-        "report": {
-            "Bearish": {"precision": 0.312, "recall": 0.171, "f1-score": 0.220},
-            "Bullish": {"precision": 0.218, "recall": 0.157, "f1-score": 0.183},
-            "Neutral": {"precision": 0.462, "recall": 0.848, "f1-score": 0.598},
-        },
-        "history": {
-            "train_f1":   [0.18,0.21,0.24,0.26,0.27,0.28,0.28,0.29,0.29,0.30],
-            "valid_f1":   [0.19,0.22,0.25,0.26,0.27,0.28,0.29,0.29,0.30,0.30],
-            "train_loss": [1.09,1.07,1.05,1.04,1.03,1.03,1.02,1.02,1.02,1.01],
-            "valid_loss": [1.08,1.07,1.06,1.05,1.05,1.05,1.04,1.04,1.04,1.04],
-        },
-        "confusion": [[59,18,269],[23,19,442],[42,38,1576]],
-    },
-    "LSTM": {
-        "Accuracy": 0.8020, "Macro F1": 0.7360,
-        "Bearish F1": 0.6420, "Bullish F1": 0.6900, "Neutral F1": 0.8750,
-        "report": {
-            "Bearish": {"precision": 0.681, "recall": 0.607, "f1-score": 0.642},
-            "Bullish": {"precision": 0.718, "recall": 0.664, "f1-score": 0.690},
-            "Neutral": {"precision": 0.855, "recall": 0.896, "f1-score": 0.875},
-        },
-        "history": {
-            "train_f1":   [0.41,0.55,0.63,0.69,0.73,0.76,0.78,0.80,0.82,0.83,0.84,0.85],
-            "valid_f1":   [0.40,0.54,0.60,0.65,0.69,0.71,0.72,0.73,0.73,0.74,0.73,0.73],
-            "train_loss": [1.01,0.82,0.70,0.60,0.52,0.46,0.41,0.37,0.33,0.30,0.28,0.26],
-            "valid_loss": [0.91,0.78,0.70,0.64,0.60,0.58,0.57,0.56,0.57,0.56,0.57,0.58],
-        },
-        "confusion": [[210,42,94],[56,321,107],[55,86,1515]],
-    },
-    "GRU": {
-        "Accuracy": 0.7960, "Macro F1": 0.7340,
-        "Bearish F1": 0.6260, "Bullish F1": 0.7140, "Neutral F1": 0.8620,
-        "report": {
-            "Bearish": {"precision": 0.654, "recall": 0.600, "f1-score": 0.626},
-            "Bullish": {"precision": 0.712, "recall": 0.717, "f1-score": 0.714},
-            "Neutral": {"precision": 0.855, "recall": 0.870, "f1-score": 0.862},
-        },
-        "history": {
-            "train_f1":   [0.39,0.53,0.61,0.67,0.71,0.74,0.76,0.78,0.80,0.81,0.82],
-            "valid_f1":   [0.38,0.52,0.59,0.64,0.68,0.70,0.71,0.72,0.72,0.73,0.73],
-            "train_loss": [1.02,0.84,0.72,0.62,0.54,0.48,0.43,0.39,0.35,0.32,0.29],
-            "valid_loss": [0.93,0.80,0.72,0.65,0.61,0.59,0.58,0.57,0.57,0.57,0.57],
-        },
-        "confusion": [[208,40,98],[52,347,85],[58,82,1516]],
-    },
-    "FinBERT": {
-        "Accuracy": 0.8790, "Macro F1": 0.8409,
-        "Bearish F1": 0.7816, "Bullish F1": 0.8218, "Neutral F1": 0.9191,
-        "report": {
-            "Bearish": {"precision": 0.792, "recall": 0.771, "f1-score": 0.782},
-            "Bullish": {"precision": 0.842, "recall": 0.802, "f1-score": 0.822},
-            "Neutral": {"precision": 0.902, "recall": 0.936, "f1-score": 0.919},
-        },
-        "history": {
-            "train_f1":   [0.60,0.82,0.90,0.94,0.96],
-            "valid_f1":   [0.77,0.80,0.83,0.83,0.84],
-            "train_loss": [0.89,0.41,0.24,0.14,0.09],
-            "valid_loss": [0.53,0.46,0.44,0.50,0.54],
-        },
-        "confusion": [[267,26,53],[28,388,68],[26,80,1550]],
-    },
-}
 
 TRAIN_DIST = {"Bearish": 1385, "Bullish": 1947, "Neutral": 6606}
 VAL_DIST   = {"Bearish": 346,  "Bullish": 484,  "Neutral": 1656}
@@ -426,7 +455,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.markdown("<div style='font-size:0.68rem;color:#3a5878;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;'>Active Model</div>", unsafe_allow_html=True)
-    selected_model = st.selectbox("Active Model", ["LSTM","GRU","Simple RNN","FinBERT (pre-recorded)"], label_visibility="collapsed")
+    selected_model = st.selectbox("Active Model", ["LSTM","GRU","Simple RNN","FinBERT"], label_visibility="collapsed")
 
     st.markdown("<hr style='border-color:#152030;margin:0.9rem 0;'>", unsafe_allow_html=True)
     st.markdown("<div style='font-size:0.68rem;color:#3a5878;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;'>Dataset</div>", unsafe_allow_html=True)
@@ -436,24 +465,59 @@ with st.sidebar:
 
     st.markdown("<hr style='border-color:#152030;margin:0.9rem 0;'>", unsafe_allow_html=True)
 
-    # Resolve active model
-    _is_bert = "FinBERT" in selected_model
-    _mk_map  = {"LSTM": "LSTM", "GRU": "GRU", "Simple RNN": "SimpleRNN"}
-    _mk      = _mk_map.get(selected_model, "LSTM")
+    # ── Resolve which model to load ──────────────────────────────────────────
+    _is_bert  = selected_model == "FinBERT"
+    _mk_map   = {"LSTM": "LSTM", "GRU": "GRU", "Simple RNN": "SimpleRNN"}
+    _mk       = _mk_map.get(selected_model, "LSTM")
+
     vocab        = load_vocab()
-    active_model = None
+    active_model = None       # RNN model object (when RNN selected)
     word2idx     = vocab or {}
-    model_ok     = False
-    if not _is_bert and vocab:
+    model_ok     = False      # True when the RNN model loaded successfully
+
+    # FinBERT objects (populated when FinBERT selected)
+    bert_tokeniser = None
+    bert_model_obj = None
+    bert_ok        = False
+    bert_err       = ""
+
+    if _is_bert:
+        bert_tokeniser, bert_model_obj, bert_err = load_finbert()
+        bert_ok = bert_model_obj is not None
+    elif vocab:
         active_model, _ = load_model(_mk, len(vocab))
         model_ok = active_model is not None
 
-    if _is_bert:
-        st.markdown("<div class='badge-demo'>Pre-recorded results<br><span style='color:#3a5888;font-size:0.68rem;'>Fine-tuned on Colab T4 GPU</span></div>", unsafe_allow_html=True)
+    if _is_bert and bert_ok:
+        st.markdown(
+            "<div class='badge-ok'>✓ FinBERT loaded (CPU)<br>"
+            "<span style='color:#1a5828;font-size:0.68rem;'>ProsusAI/finbert · fine-tuned</span></div>",
+            unsafe_allow_html=True,
+        )
+    elif _is_bert and not bert_ok:
+        st.markdown(
+            f"<div class='badge-warn'>⚠ FinBERT not loaded<br>"
+            f"<span style='color:#6a3828;font-size:0.68rem;font-family:IBM Plex Mono,monospace;'>"
+            f"{bert_err or 'Place FinBERT_best.pt in models/'}</span></div>",
+            unsafe_allow_html=True,
+        )
     elif model_ok:
-        st.markdown(f"<div class='badge-ok'>✓ {selected_model} loaded<br><span style='color:#1a5828;font-size:0.68rem;'>Vocab: {len(vocab):,} tokens · {device}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='badge-ok'>✓ {selected_model} loaded (CPU)<br><span style='color:#1a5828;font-size:0.68rem;'>Vocab: {len(vocab):,} tokens</span></div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div class='badge-warn'>⚠ Demo mode — weights not found<br><span style='color:#6a3828;font-size:0.68rem;'>Run notebook → export_vocab.py</span></div>", unsafe_allow_html=True)
+        _missing = []
+        if not vocab:
+            _missing.append("vocab.json")
+        for _n in ["SimpleRNN", "LSTM", "GRU"]:
+            if not os.path.exists(os.path.join(MODEL_DIR, f"{_n}_best.pt")):
+                _missing.append(f"{_n}_best.pt")
+        _miss_str = "<br>".join(_missing) if _missing else "models/ folder not found"
+        st.markdown(
+            f"<div class='badge-warn'>⚠ Demo mode — missing files:<br>"
+            f"<span style='color:#6a3828;font-size:0.68rem;font-family:IBM Plex Mono,monospace;'>"
+            f"{_miss_str}</span><br>"
+            f"<span style='color:#4a2818;font-size:0.65rem;'>Place exported files in models/</span></div>",
+            unsafe_allow_html=True,
+        )
 
     st.markdown("<hr style='border-color:#152030;margin:0.9rem 0;'>", unsafe_allow_html=True)
     st.markdown("<div style='font-size:0.65rem;color:#1e3048;line-height:1.7;'>Dataset: Twitter Financial News Sentiment<br>zeroshot/twitter-financial-news-sentiment<br></div>", unsafe_allow_html=True)
@@ -463,26 +527,62 @@ with st.sidebar:
 # HEADER + TOP METRICS BAR
 # ═════════════════════════════════════════════════════════════════════════════
 
-st.markdown("<div class='dash-title'>Financial News Sentiment AI</div><div class='dash-sub'>Classify finance tweets as Bearish · Bullish · Neutral using RNN baselines &amp; FinBERT — GUVI × HCL Capstone</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='dash-title'>Financial News Sentiment AI</div>"
+    "<div class='dash-sub'>"
+    "Classify finance tweets as Bearish · Bullish · Neutral "
+    "using RNN baselines &amp; FinBERT"
+    "</div>",
+    unsafe_allow_html=True
+)
 
+# Select correct metrics key
 _met_key = "FinBERT" if _is_bert else selected_model
-_met     = PRERECORDED[_met_key]
-_cols    = st.columns(5)
-for _col, _lbl, _val, _clr in zip(_cols,
-    ["Accuracy","Macro F1","Bearish F1","Bullish F1","Neutral F1"],
-    [_met["Accuracy"],_met["Macro F1"],_met["Bearish F1"],_met["Bullish F1"],_met["Neutral F1"]],
-    ["#c8dcf8","#f0c040","#e74c3c","#2ecc71","#3498db"]):
-    _col.markdown(f"<div class='metric-tile'><div class='val' style='color:{_clr};'>{_val:.4f}</div><div class='lbl'>{_lbl}</div></div>", unsafe_allow_html=True)
 
-st.markdown("<div style='margin-bottom:1.2rem;'></div>", unsafe_allow_html=True)
+# Get metrics for ONLY that model
+# _met = metrics[_met_key]
+_met = metrics["FinBERT"]
+_cols = st.columns(5)
+
+for _col, _lbl, _val, _clr in zip(
+    _cols,
+    ["Accuracy","Macro F1","Bearish F1","Bullish F1","Neutral F1"],
+    [
+        _met["Accuracy"],
+        _met["Macro F1"],
+        _met["Bearish F1"],
+        _met["Bullish F1"],
+        _met["Neutral F1"]
+    ],
+    ["#c8dcf8","#f0c040","#e74c3c","#2ecc71","#3498db"]
+):
+
+    _col.markdown(
+        f"""
+        <div class='metric-tile'>
+            <div class='val' style='color:{_clr};'>
+                {_val:.4f}
+            </div>
+            <div class='lbl'>
+                {_lbl}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+st.markdown(
+    "<div style='margin-bottom:1.2rem;'></div>",
+    unsafe_allow_html=True
+)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # TABS
 # ═════════════════════════════════════════════════════════════════════════════
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "Live Prediction", "Model Comparison",
-    "Dataset Explorer", "Batch Analyse", "About",
+    "Dataset Explorer", "Batch Analyse"
 ])
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,17 +617,24 @@ def render_pred_card(label: str, conf: float, model_name: str, cleaned: str = ""
         )
 
 
-def run_inference(text: str):
-    """Route to real model or demo depending on availability."""
+def run_inference(text: str) -> dict:
+    """Route to FinBERT, RNN model, or demo depending on what is loaded."""
+    if _is_bert and bert_ok:
+        return predict_single_bert(text, bert_tokeniser, bert_model_obj)
     if model_ok and not _is_bert:
         return predict_single(text, active_model, word2idx)
     return demo_predict(text)
 
 
-def run_para_inference(text: str):
+def run_para_inference(text: str) -> dict:
+    """Paragraph-level routing: FinBERT, RNN, or demo."""
+    if _is_bert and bert_ok:
+        return predict_paragraph_bert(text, bert_tokeniser, bert_model_obj)
     if model_ok and not _is_bert:
         return predict_paragraph(text, active_model, word2idx)
-    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if len(s.split()) > 3] or [text]
+    # Demo fallback — simulate sentence-level results
+    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip())
+             if len(s.split()) > 3] or [text]
     results = [demo_predict(s) for s in sents]
     votes   = Counter(r["label"] for r in results)
     return {"overall": votes.most_common(1)[0][0], "votes": dict(votes),
@@ -560,8 +667,10 @@ with tab1:
     _do_pred  = _bl.button("Predict Sentiment",  type="primary", use_container_width=True)
     _do_para  = _br.button("Analyse Paragraph",               use_container_width=True)
 
-    if not model_ok and not _is_bert:
-        st.info("ℹ Running in **demo mode** — predictions are simulated. Run the notebook + `export_vocab.py` to enable live inference.")
+    if _is_bert and not bert_ok:
+        st.info(f"ℹ FinBERT weights not found — running in demo mode. Place `FinBERT_best.pt` in `models/`. Error: {bert_err}")
+    elif not model_ok and not _is_bert:
+        st.info("ℹ Running in **demo mode** — place `vocab.json` and `*_best.pt` files in the `models/` folder to enable live inference.")
 
     # ── Single prediction ──────────────────────────────────────────────────────
     if _do_pred:
@@ -680,14 +789,14 @@ with tab2:
                              "Bearish F1": f"{m['Bearish F1']:.4f}",
                              "Bullish F1": f"{m['Bullish F1']:.4f}",
                              "Neutral F1": f"{m['Neutral F1']:.4f}"}
-                            for n, m in PRERECORDED.items()]).set_index("Model")
+                            for n, m in metrics.items()]).set_index("Model")
     st.dataframe(_sumdf.style.highlight_max(axis=0, color="#0a2810"), use_container_width=True)
 
-    _lstm_f1 = PRERECORDED["LSTM"]["Macro F1"]
-    _bert_f1 = PRERECORDED["FinBERT"]["Macro F1"]
+    _lstm_f1 = metrics["LSTM"]["Macro F1"]
+    _bert_f1 = metrics["FinBERT"]["Macro F1"]
     st.markdown(
         f"<div style='padding:10px 16px;background:#070f1a;border:1px solid #1e3050;border-radius:7px;font-size:0.82rem;color:#5a8aaa;margin:0.8rem 0;'>"
-        f"🏆 FinBERT achieves <b style='color:#f0c040;'>+{_bert_f1-_lstm_f1:.4f} Macro F1</b> over the best RNN (LSTM). "
+        f"FinBERT achieves <b style='color:#f0c040;'>+{_bert_f1-_lstm_f1:.4f} Macro F1</b> over the best RNN (LSTM). "
         f"Largest gains: <span style='color:#e74c3c;'>Bearish</span> (+0.14) and <span style='color:#2ecc71;'>Bullish</span> (+0.13) — "
         f"the minority classes where financial domain knowledge matters most.</div>",
         unsafe_allow_html=True,
@@ -696,13 +805,13 @@ with tab2:
 
     # Macro F1 bar + per-class heatmap
     _c1, _c2 = st.columns(2)
-    _mnames  = list(PRERECORDED.keys())
+    _mnames  = list(metrics.keys())
     _mclrs   = ["#c0392b","#2980b9","#27ae60","#e67e22"]
 
     with _c1:
         st.markdown("**Macro F1 by Model**")
         fig, ax = _dark_fig(figsize=(6, 3.8))
-        f1vals  = [PRERECORDED[m]["Macro F1"] for m in _mnames]
+        f1vals  = [metrics[m]["Macro F1"] for m in _mnames]
         bars    = ax.bar(_mnames, f1vals, color=_mclrs, edgecolor="#152030", linewidth=0.8)
         for b, v in zip(bars, f1vals):
             ax.text(b.get_x()+b.get_width()/2, b.get_height()+0.01, f"{v:.4f}",
@@ -717,7 +826,7 @@ with tab2:
 
     with _c2:
         st.markdown("**Per-Class F1 Heatmap**")
-        hdata = np.array([[PRERECORDED[m]["Bearish F1"], PRERECORDED[m]["Bullish F1"], PRERECORDED[m]["Neutral F1"]] for m in _mnames])
+        hdata = np.array([[metrics[m]["Bearish F1"], metrics[m]["Bullish F1"], metrics[m]["Neutral F1"]] for m in _mnames])
         fig, ax = _dark_fig(figsize=(6, 3.8))
         sns.heatmap(hdata, annot=True, fmt=".4f", cmap="RdYlGn",
                     xticklabels=["Bearish","Bullish","Neutral"], yticklabels=_mnames,
@@ -733,7 +842,7 @@ with tab2:
     ]:
         st.markdown(f"**{_metric}**")
         fig, axes = _dark_fig(1, 4, figsize=(16, 3.5))
-        for ax, (mn, md), tc in zip(axes, PRERECORDED.items(), _mclrs):
+        for ax, (mn, md), tc in zip(axes, metrics.items(), _mclrs):
             tr = md["history"][_ykey_tr]
             va = md["history"][_ykey_va]
             ax.plot(range(1, len(tr)+1), tr, color=tc, linewidth=2, label="Train")
@@ -754,8 +863,8 @@ with tab2:
 
     # Detailed report + confusion matrix
     st.markdown("**Classification Report & Confusion Matrix**")
-    rep_sel = st.selectbox("Select model", list(PRERECORDED.keys()), key="rep_sel")
-    rep_m   = PRERECORDED[rep_sel]
+    rep_sel = st.selectbox("Select model", list(metrics.keys()), key="rep_sel")
+    rep_m   = metrics[rep_sel]
     rc1, rc2 = st.columns(2)
 
     with rc1:
@@ -824,7 +933,7 @@ with tab3:
         plt.tight_layout(); _render(fig)
 
     _imb = TRAIN_DIST["Neutral"] / TRAIN_DIST["Bearish"]
-    st.markdown(f"<div class='insight-box'>⚖ <b>Class imbalance:</b> Neutral is <b>{_imb:.1f}×</b> more frequent than Bearish. Addressed with inverse-frequency <b>class weights</b> in CrossEntropyLoss — the minority Bearish class gets the highest training weight.</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='insight-box'><b>Class imbalance:</b> Neutral is <b>{_imb:.1f}×</b> more frequent than Bearish. Addressed with inverse-frequency <b>class weights</b> in CrossEntropyLoss — the minority Bearish class gets the highest training weight.</div>", unsafe_allow_html=True)
     st.markdown("---")
 
     # Word / Ticker / Overlap explorer
@@ -841,7 +950,7 @@ with tab3:
             ax.set_xlabel("Frequency", color="#4a6888", fontsize=8)
             _style_ax(ax)
         plt.tight_layout(pad=2); _render(fig)
-        st.markdown("<div class='insight-box'>💡 <b>Insight:</b> <i>stock</i>, <i>market</i>, <i>price</i> appear in <b>all three</b> classes — sentiment is carried by word order and context, not by individual keywords. This is why sequence models outperform bag-of-words classifiers.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='insight-box'><b>Insight:</b> <i>stock</i>, <i>market</i>, <i>price</i> appear in <b>all three</b> classes — sentiment is carried by word order and context, not by individual keywords. This is why sequence models outperform bag-of-words classifiers.</div>", unsafe_allow_html=True)
 
     elif explore_mode == "Top Tickers per Class":
         st.markdown("**Most Mentioned Stock Tickers per Sentiment Class**")
@@ -943,7 +1052,7 @@ with tab4:
                 prog.empty()
 
                 if not model_ok and not _is_bert:
-                    st.info("ℹ Demo mode — predictions are simulated. Run the notebook + `export_vocab.py` for real results.")
+                    st.info("ℹ Demo mode — place `vocab.json` and `*_best.pt` files in the `models/` folder for real predictions.")
 
                 res_df = pd.DataFrame(results)
                 st.markdown("#### Results Preview")
@@ -999,102 +1108,3 @@ with tab4:
                                    data=res_df.to_csv(index=False).encode("utf-8"),
                                    file_name="sentiment_predictions.csv",
                                    mime="text/csv", type="primary")
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# TAB 5 — ABOUT
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-with tab5:
-    st.markdown("### About This Dashboard")
-    a1, a2 = st.columns([3, 2])
-
-    with a1:
-        st.markdown("""
-**Project:** Financial News Sentiment Prediction using Deep Learning & BERT  
-**Dataset:** [zeroshot/twitter-financial-news-sentiment](https://huggingface.co/datasets/zeroshot/twitter-financial-news-sentiment)  
-**Task:** 3-class tweet classification — Bearish 🔴 · Bullish 🟢 · Neutral 🔵
-
----
-
-#### How to enable live predictions
-
-By default the dashboard runs in **demo mode** (pre-recorded metrics + simulated probabilities). To use real trained weights:
-
-**Step 1 — Train models** (run notebook end-to-end)
-```bash
-jupyter notebook Financial_News_Sentiment_Prediction_Complete.ipynb
-```
-Saves to `models/SimpleRNN_best.pt`, `models/LSTM_best.pt`, `models/GRU_best.pt`
-
-**Step 2 — Export vocabulary**
-```bash
-python export_vocab.py
-# Creates models/vocab.json
-```
-
-**Step 3 — Launch dashboard**
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
-
----
-
-#### File structure
-```
-sentiment_dashboard/
-├── app.py              ← This Streamlit app
-├── export_vocab.py     ← Run once after training
-├── requirements.txt
-├── README.md
-└── models/
-    ├── vocab.json      ← export_vocab.py output
-    ├── SimpleRNN_best.pt
-    ├── LSTM_best.pt
-    └── GRU_best.pt
-```
-
----
-
-#### References
-1. Devlin et al. (2019) — *BERT: Pre-training of Deep Bidirectional Transformers*. NAACL.
-2. Araci (2019) — *FinBERT: Financial Sentiment Analysis with Pre-trained Language Models*. arXiv:1908.10063.
-3. Hochreiter & Schmidhuber (1997) — *Long Short-Term Memory*. Neural Computation.
-4. Cho et al. (2014) — *Learning Phrase Representations using RNN Encoder–Decoder*. EMNLP.
-5. Model: [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert)
-""")
-
-    with a2:
-        st.markdown("#### Model Architecture Summary")
-        arch_df = pd.DataFrame([
-            {"Model":"Simple RNN","Params":"~1.38M","LR":"1e-3","Epochs":"≤25","Notes":"Vanishing gradient baseline"},
-            {"Model":"LSTM",      "Params":"~1.73M","LR":"3e-4","Epochs":"≤25","Notes":"Best RNN — gated memory"},
-            {"Model":"GRU",       "Params":"~1.60M","LR":"3e-4","Epochs":"≤25","Notes":"Faster, matches LSTM"},
-            {"Model":"FinBERT",   "Params":"~110M", "LR":"2e-5","Epochs":"5",  "Notes":"Domain pre-trained BERT"},
-        ]).set_index("Model")
-        st.dataframe(arch_df, use_container_width=True)
-
-        st.markdown("#### RNN Preprocessing Steps")
-        for i, step in enumerate([
-            "Lowercase all text",
-            "Remove URLs (http://…)",
-            "Remove @mentions",
-            "Normalise $TICKER → ticker",
-            "Remove # symbol, keep hashtag word",
-            "Remove special characters / punctuation",
-            "Remove stopwords (keep: up, down, not…)",
-            "Lemmatise each token",
-            "Pad / truncate to MAX_SEQ_LEN = 32",
-        ], 1):
-            st.markdown(f"<div style='font-size:0.78rem;color:#6888aa;padding:2px 0;'><span style='color:#2a5080;font-family:IBM Plex Mono,monospace;'>{i:02d}.</span> {step}</div>", unsafe_allow_html=True)
-        st.markdown("<div style='margin-top:0.8rem;font-size:0.74rem;color:#3a5878;'>FinBERT uses URL-removal only — its sub-word tokeniser handles punctuation, casing, and $tickers natively.</div>", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("#### Final Results (Validation)")
-        final_df = pd.DataFrame([
-            {"Model": n, "Accuracy": m["Accuracy"], "Macro F1": m["Macro F1"],
-             "Bearish F1": m["Bearish F1"], "Bullish F1": m["Bullish F1"], "Neutral F1": m["Neutral F1"]}
-            for n, m in PRERECORDED.items()
-        ]).set_index("Model")
-        st.dataframe(final_df.style.highlight_max(axis=0, color="#0a2810").format("{:.4f}"), use_container_width=True)
