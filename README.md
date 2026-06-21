@@ -1,3 +1,13 @@
+---
+title: Financial Sentiment Dashboard
+emoji: 📈
+colorFrom: blue
+colorTo: slate
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Financial News Sentiment Prediction using Deep Learning & BERT
 
 A production-ready sentiment classification system that labels finance-related tweets as **Bearish 🔴**, **Bullish 🟢**, or **Neutral 🔵** using deep learning. Implements three RNN-based baseline models (SimpleRNN, LSTM, GRU) and fine-tunes **FinBERT** (ProsusAI/finbert) for best-in-class performance. Shipped with an interactive Streamlit dashboard for live inference.
