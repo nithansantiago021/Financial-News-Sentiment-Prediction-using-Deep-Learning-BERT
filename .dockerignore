@@ -1,0 +1,39 @@
+# ── Jupyter Notebooks (Excludes from Container, Keeps on GitHub!) ──────────────
+*.ipynb
+.ipynb_checkpoints/
+
+# ── Local Credentials & Configuration ─────────────────────────────────────────
+.env
+*.env
+.secrets/
+secrets.toml
+credentials.json
+
+# ── Version Control Systems ───────────────────────────────────────────────────
+.git
+.gitignore
+.github/
+
+# ── Python Runtime Clutter ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# ── Local Environment Workspaces ──────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── System Overhead Files ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── Local Hard Drive Heavy Assets (Bypassed via Cloud Hub Fetch) ─────────────
+models/
+weights/
+*.pt
+*.csv

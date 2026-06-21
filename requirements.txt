@@ -1,0 +1,19 @@
+# Scientific stack
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.12
+
+# NLP & Hugging Face
+nltk>=3.8
+sentencepiece
+datasets>=2.16
+transformers>=4.35
+scikit-learn>=1.3
+streamlit>=1.26
+
+# PyTorch Core Stack - Explicitly mapped to the CPU index link
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+torchaudio

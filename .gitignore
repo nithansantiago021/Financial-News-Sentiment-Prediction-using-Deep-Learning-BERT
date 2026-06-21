@@ -1,0 +1,31 @@
+# ── Credentials and Secrets ───────────────────────────────────────────────────
+.env
+*.env
+.secrets/
+secrets.toml
+credentials.json
+
+# ── Local Model Weights (DO NOT PUSH TO GIT) ──────────────────────────────────
+models/
+*.pt
+*.pth
+
+# ── Python Runtime & Local Environments ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# ── IDE and System Overhead ───────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Project Specific Logs & Temporary Dumps ───────────────────────────────────
+*.log
+*.sql
+*.sqlite
