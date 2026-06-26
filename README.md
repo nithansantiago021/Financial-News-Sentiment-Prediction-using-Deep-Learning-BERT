@@ -6,6 +6,9 @@ colorTo: gray
 sdk: docker
 app_port: 7860
 pinned: false
+models: 
+- ProsusAI/finbert
+- ntini97/financial-sentiment-models
 ---
 
 # Financial News Sentiment Prediction using Deep Learning & BERT

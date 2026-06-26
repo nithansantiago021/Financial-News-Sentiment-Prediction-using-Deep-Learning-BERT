@@ -1,0 +1,497 @@
+{
+    "class_distribution": {
+        "train": {
+            "Bearish": 1442,
+            "Bullish": 1923,
+            "Neutral": 6178
+        },
+        "validation": {
+            "Bearish": 347,
+            "Bullish": 475,
+            "Neutral": 1566
+        }
+    },
+    "top_words": {
+        "Bearish": [
+            [
+                "stock",
+                148
+            ],
+            [
+                "down",
+                131
+            ],
+            [
+                "misses",
+                85
+            ],
+            [
+                "coronavirus",
+                79
+            ],
+            [
+                "oil",
+                74
+            ],
+            [
+                "economy",
+                68
+            ],
+            [
+                "market",
+                66
+            ],
+            [
+                "stocks",
+                64
+            ],
+            [
+                "price",
+                64
+            ],
+            [
+                "china",
+                63
+            ],
+            [
+                "shares",
+                62
+            ],
+            [
+                "cut",
+                56
+            ],
+            [
+                "says",
+                55
+            ],
+            [
+                "revenue",
+                54
+            ],
+            [
+                "sales",
+                51
+            ],
+            [
+                "over",
+                50
+            ],
+            [
+                "marketscreener",
+                49
+            ],
+            [
+                "trade",
+                49
+            ],
+            [
+                "lower",
+                48
+            ],
+            [
+                "target",
+                47
+            ]
+        ],
+        "Bullish": [
+            [
+                "stock",
+                255
+            ],
+            [
+                "beats",
+                164
+            ],
+            [
+                "price",
+                137
+            ],
+            [
+                "target",
+                117
+            ],
+            [
+                "stocks",
+                114
+            ],
+            [
+                "shares",
+                112
+            ],
+            [
+                "revenue",
+                106
+            ],
+            [
+                "market",
+                101
+            ],
+            [
+                "new",
+                97
+            ],
+            [
+                "eps",
+                92
+            ],
+            [
+                "trade",
+                80
+            ],
+            [
+                "raised",
+                78
+            ],
+            [
+                "higher",
+                71
+            ],
+            [
+                "economy",
+                71
+            ],
+            [
+                "buy",
+                69
+            ],
+            [
+                "markets",
+                65
+            ],
+            [
+                "hedge",
+                65
+            ],
+            [
+                "bullish",
+                63
+            ],
+            [
+                "funds",
+                63
+            ],
+            [
+                "says",
+                61
+            ]
+        ],
+        "Neutral": [
+            [
+                "stock",
+                570
+            ],
+            [
+                "marketscreener",
+                376
+            ],
+            [
+                "results",
+                315
+            ],
+            [
+                "new",
+                285
+            ],
+            [
+                "earnings",
+                256
+            ],
+            [
+                "says",
+                233
+            ],
+            [
+                "dividend",
+                225
+            ],
+            [
+                "reports",
+                222
+            ],
+            [
+                "inc",
+                195
+            ],
+            [
+                "call",
+                190
+            ],
+            [
+                "economy",
+                185
+            ],
+            [
+                "declares",
+                182
+            ],
+            [
+                "market",
+                173
+            ],
+            [
+                "stocks",
+                172
+            ],
+            [
+                "buy",
+                148
+            ],
+            [
+                "deal",
+                147
+            ],
+            [
+                "conference",
+                146
+            ],
+            [
+                "presentation",
+                144
+            ],
+            [
+                "ceo",
+                141
+            ],
+            [
+                "fed",
+                130
+            ]
+        ]
+    },
+    "top_tickers": {
+        "Bearish": [
+            [
+                "$USO",
+                7
+            ],
+            [
+                "$NFLX",
+                4
+            ],
+            [
+                "$UBER",
+                4
+            ],
+            [
+                "$OIL",
+                4
+            ],
+            [
+                "$LK",
+                3
+            ],
+            [
+                "$GME",
+                3
+            ],
+            [
+                "$ECONX",
+                3
+            ],
+            [
+                "$SCANX",
+                3
+            ],
+            [
+                "$ZM",
+                3
+            ],
+            [
+                "$ESS",
+                2
+            ],
+            [
+                "$GM",
+                2
+            ],
+            [
+                "$GTT",
+                2
+            ],
+            [
+                "$AAPL",
+                2
+            ],
+            [
+                "$KRG",
+                2
+            ],
+            [
+                "$MANT",
+                2
+            ]
+        ],
+        "Bullish": [
+            [
+                "$TSLA",
+                9
+            ],
+            [
+                "$SPY",
+                8
+            ],
+            [
+                "$SCANX",
+                7
+            ],
+            [
+                "$NVDA",
+                6
+            ],
+            [
+                "$SUMRX",
+                6
+            ],
+            [
+                "$INPX",
+                6
+            ],
+            [
+                "$ECONX",
+                5
+            ],
+            [
+                "$LYFT",
+                4
+            ],
+            [
+                "$AAPL",
+                4
+            ],
+            [
+                "$DIS",
+                4
+            ],
+            [
+                "$ICPT",
+                4
+            ],
+            [
+                "$AMZN",
+                4
+            ],
+            [
+                "$USO",
+                4
+            ],
+            [
+                "$UNG",
+                4
+            ],
+            [
+                "$IWM",
+                4
+            ]
+        ],
+        "Neutral": [
+            [
+                "$COMDX",
+                21
+            ],
+            [
+                "$SPY",
+                16
+            ],
+            [
+                "$TSLA",
+                9
+            ],
+            [
+                "$WIRES",
+                9
+            ],
+            [
+                "$ULTA",
+                8
+            ],
+            [
+                "$MDCO",
+                8
+            ],
+            [
+                "$BONDX",
+                7
+            ],
+            [
+                "$QQQ",
+                7
+            ],
+            [
+                "$SUMRX",
+                6
+            ],
+            [
+                "$IWM",
+                6
+            ],
+            [
+                "$SCANX",
+                6
+            ],
+            [
+                "$FLOW",
+                5
+            ],
+            [
+                "$WORK",
+                5
+            ],
+            [
+                "$AMZN",
+                5
+            ],
+            [
+                "$AMTD",
+                5
+            ]
+        ]
+    },
+    "word_count_stats": {
+        "count": {
+            "Bearish": 1442.0,
+            "Bullish": 1923.0,
+            "Neutral": 6178.0
+        },
+        "mean": {
+            "Bearish": 12.0,
+            "Bullish": 11.93,
+            "Neutral": 12.3
+        },
+        "std": {
+            "Bearish": 4.31,
+            "Bullish": 4.32,
+            "Neutral": 4.84
+        },
+        "min": {
+            "Bearish": 3.0,
+            "Bullish": 2.0,
+            "Neutral": 1.0
+        },
+        "25%": {
+            "Bearish": 9.0,
+            "Bullish": 9.0,
+            "Neutral": 9.0
+        },
+        "50%": {
+            "Bearish": 11.0,
+            "Bullish": 11.0,
+            "Neutral": 12.0
+        },
+        "75%": {
+            "Bearish": 15.0,
+            "Bullish": 14.0,
+            "Neutral": 16.0
+        },
+        "max": {
+            "Bearish": 32.0,
+            "Bullish": 29.0,
+            "Neutral": 29.0
+        }
+    },
+    "sequence_length": {
+        "p95": 21,
+        "max": 32,
+        "recommended_max_len": 32
+    }
+}
