@@ -409,9 +409,16 @@ def predict_paragraph_bert(text: str, tokeniser, bert_model) -> dict:
 # DATA
 # ═════════════════════════════════════════════════════════════════════════════
 
-with open("assets/eda_results.json") as f:
-    eda = json.load(f)
-
+try:
+    cached_eda_path = hf_hub_download(
+        repo_id=REPOSITORY_ID,
+        filename='weights/eda_results.json'
+    )
+    with open("assets/eda_results.json") as f:
+        eda = json.load(f)
+except Exception as e:
+    st.error(f"Error loading EDA results from cloud {e}")
+    eda = {}
 
 TRAIN_DIST = eda["class_distribution"]["train"]
 VAL_DIST   = eda["class_distribution"]["validation"]
