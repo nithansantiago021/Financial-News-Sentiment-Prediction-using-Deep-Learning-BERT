@@ -21,21 +21,29 @@ A production-ready sentiment classification system that labels finance-related t
 
 ## Project Structure
 
-```
+```text
 financial-news-sentiment/
 │
-├── Financial_News_Sentiment_Prediction_Complete.ipynb   ← Main notebook (all sections)
+├── .dockerignore                                               ← Docker ignore rules
+├── .gitignore                                                  ← Git ignore rules
+├── Dockerfile                                                  ← Docker configuration
+├── requirements.txt                                            ← Python dependencies
 │
-├── app.py                 ← Streamlit dashboard (4 tabs)
-├── export_vocab.py        ← Bridge script: notebook → dashboard
-├── requirements.txt       ← Python dependencies
-├── README.md              ← Dashboard-specific docs
-├── models/                ← Created after running notebook
+├── app.py                                                      ← Streamlit dashboard
+├── export_vocab.py                                             ← Exports tokenizer vocabulary for the dashboard
 │
-├── README.md                  
-└── project_report.md      
+├── Financial_News_Sentiment_Prediction_Complete.ipynb          ← End-to-end notebook (EDA, preprocessing, model training & evaluation)
+│                                  
+│
+├── project_report.md                                           ← Detailed project report
+├── README.md                                                   ← Project documentation
+│
+├── Assets/                                                     ← Images and other static assets
+│
+├── models/                                                     ← Saved trained models and tokenizer files
+│
+└── .vscode/                                                    ← VS Code workspace settings (optional)
 ```
-
 ---
 
 ## Setup & Installation

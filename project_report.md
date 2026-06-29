@@ -150,7 +150,7 @@ The Neutral class improvement of +7.1% is non-trivial but unsurprising: the GRU 
 
 The interactive dashboard (`app.py`) is built with Streamlit and provides five tabs:
 
-![Dashboard](Assets\app.jpeg)
+![Dashboard](Assets/app.jpeg)
 
 **Tab 1 — Live Prediction:** A text area accepts any raw financial tweet or headline. Sample buttons load pre-populated examples across all three sentiment classes. After clicking "Predict Sentiment", the predicted label, confidence score, and a horizontal probability bar chart are displayed. "Analyse Paragraph" mode splits multi-sentence input into individual sentences, classifies each, and returns an overall sentiment via majority vote with a per-sentence confidence breakdown.
 
