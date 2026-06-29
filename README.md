@@ -13,9 +13,13 @@ models:
 ---
 -->
 
-# Financial News Sentiment Prediction using Deep Learning & BERT
+# Financial News Sentiment Prediction using Deep Learning & FinBERT
 
-A production-ready sentiment classification system that labels finance-related tweets as **Bearish 🔴**, **Bullish 🟢**, or **Neutral 🔵** using deep learning. Implements three RNN-based baseline models (SimpleRNN, LSTM, GRU) and fine-tunes **FinBERT** (ProsusAI/finbert) for best-in-class performance. Shipped with an interactive Streamlit dashboard for live inference.
+A production-ready sentiment classification system that classifies finance-related news and tweets into **Bearish 🔴**, **Bullish 🟢**, or **Neutral 🔵** using deep learning and transformer-based models.
+
+The project implements three RNN-based baseline models (**SimpleRNN**, **LSTM**, and **GRU**) and fine-tunes **FinBERT (ProsusAI/finbert)** to achieve state-of-the-art performance on financial sentiment analysis. An interactive Streamlit dashboard is included for real-time sentiment prediction.
+
+**Live Demo:** https://ntini97-financial-sentiment-dashboard.hf.space/
 
 ---
 
@@ -109,4 +113,6 @@ python export_vocab.py --verify
 ```bash
 streamlit run app.py
 ```
+![Dashboard](Assets/app.jpeg)
+
 ---
