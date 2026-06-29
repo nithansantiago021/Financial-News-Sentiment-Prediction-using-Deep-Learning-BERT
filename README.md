@@ -1,3 +1,4 @@
+<!--
 ---
 title: Financial Sentiment Dashboard
 emoji: 📈
@@ -16,6 +17,7 @@ models:
 A production-ready sentiment classification system that labels finance-related tweets as **Bearish 🔴**, **Bullish 🟢**, or **Neutral 🔵** using deep learning. Implements three RNN-based baseline models (SimpleRNN, LSTM, GRU) and fine-tunes **FinBERT** (ProsusAI/finbert) for best-in-class performance. Shipped with an interactive Streamlit dashboard for live inference.
 
 ---
+-->
 
 ## Project Structure
 

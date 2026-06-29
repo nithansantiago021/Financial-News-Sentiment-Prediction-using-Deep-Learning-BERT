@@ -414,7 +414,7 @@ try:
         repo_id=REPOSITORY_ID,
         filename='weights/eda_results.json'
     )
-    with open("assets/eda_results.json") as f:
+    with open("models/eda_results.json") as f:
         eda = json.load(f)
 except Exception as e:
     st.error(f"Error loading EDA results from cloud {e}")
