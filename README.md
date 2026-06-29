@@ -11,13 +11,14 @@ models:
 - ProsusAI/finbert
 - ntini97/financial-sentiment-models
 ---
+-->
 
 # Financial News Sentiment Prediction using Deep Learning & BERT
 
 A production-ready sentiment classification system that labels finance-related tweets as **Bearish 🔴**, **Bullish 🟢**, or **Neutral 🔵** using deep learning. Implements three RNN-based baseline models (SimpleRNN, LSTM, GRU) and fine-tunes **FinBERT** (ProsusAI/finbert) for best-in-class performance. Shipped with an interactive Streamlit dashboard for live inference.
 
 ---
--->
+
 
 ## Project Structure
 
@@ -44,6 +45,9 @@ financial-news-sentiment/
 │
 └── .vscode/                                                    ← VS Code workspace settings (optional)
 ```
+
+**Note:** The `models/` directory is **not included** in this repository because it contains large trained model weights (e.g., a fine-tuned FinBERT model of approximately 500 MB). Run the notebook to train the models and generate the required files locally before launching the Streamlit application.
+
 ---
 
 ## Setup & Installation
